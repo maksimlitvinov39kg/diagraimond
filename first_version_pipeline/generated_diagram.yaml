@@ -1,0 +1,26 @@
+edges:
+- from: get_data
+  to: classify_data
+- from: classify_data
+  to: db_query
+- from: db_query
+  to: continue_process
+- from: db_query
+  to: get_additional_info
+- from: continue_process
+  to: exit_program
+- from: get_additional_info
+  to: exit_program
+nodes:
+- id: get_data
+  label: получаем данные
+- id: classify_data
+  label: разделяем данные на категории с помощью классификатора
+- id: db_query
+  label: делаем запрос в базу данных (РАГ + ЛЛМ) для дополнительной информации
+- id: continue_process
+  label: продолжаем процесс
+- id: get_additional_info
+  label: идем за дополнительной инфой
+- id: exit_program
+  label: выходим из программы
