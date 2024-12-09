@@ -37,6 +37,6 @@ streamlit run main.py
 2) Результат работы
 ![](./assets/cvp1.png)
 3) Альтернатива
-![](./asstes/cvp2.png)
+![](.assets/cvp2.png)
 
 
