@@ -41,7 +41,7 @@ class Generator:
         ]
 
         completion = self.client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=messages,
             temperature=0.7,
             n=1,
@@ -49,8 +49,6 @@ class Generator:
         )
 
         python_code = completion.choices[0].message.content
-        print("Сгенерированный Python-код (сырой):")
-        print(python_code)
 
         try:
             if "```python" in python_code:
@@ -66,8 +64,3 @@ class Generator:
         except Exception as e:
             print(f"Ошибка при сохранении Python-кода в файл: {e}")
 
-
-
-gen = Generator()
-
-gen.generate_python_from_text("Процесс состоит из трёх этапов: Планирование, Исполнение и Проверка. После выполнения Исполнения возвращаемся на этап Проверки.", "graph_output.py")

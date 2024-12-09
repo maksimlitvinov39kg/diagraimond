@@ -38,7 +38,7 @@ class Generator:
         ]
 
         completion = self.client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=messages,
             temperature=0.9,
             n=1,
@@ -46,8 +46,6 @@ class Generator:
         )
 
         yaml_content = completion.choices[0].message.content
-        print("Сгенерированный YAML (сырой):")
-        print(yaml_content)
 
         try:
             
