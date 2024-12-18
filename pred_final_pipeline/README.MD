@@ -16,7 +16,7 @@ pip install httpx==0.27.2
 ```
 4) перейдите в нужную папку
 ```
-cd /combined_version_pipeline
+cd /pred_final_pipeline
 ```
 5) создайте файл .env, если его нет и добавьте туда ваш HF_API_KEY
 
