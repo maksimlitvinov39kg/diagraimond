@@ -3,16 +3,16 @@ from checker import Checker
 
 def test_checker_simple():
     # Создаем экземпляр Generator (используя ваш system_prompt)
-    system_prompt = "You are a Python code generator..."  # ваш промпт
+    system_prompt = "You are a Python code generator..." 
     generator = Generator(system_prompt)
     
     # Создаем тестовый файл с некорректным кодом
     test_file = "test_code.py"
     incorrect_code = """
     def print_hello()
-        print("Hello, World!")  # отсутствует двоеточие после скобок
+        print("Hello, World!")
     
-    def calculate_sum(a b):  # отсутствует запятая между параметрами
+    def calculate_sum(a b):
         return a + b
     """
     
