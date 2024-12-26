@@ -7,6 +7,7 @@ from piechart.generator import PieChartGenerator
 from barchart.generator import BarChartGenerator
 from linegraph.generator import LineGraphGenerator
 import atexit
+from checker import Checker
 
 temporary_files = []
 
@@ -82,6 +83,37 @@ def cleanup_files():
             os.remove(file)
             print(f"Удалён временный файл: {file}")
 
+def try_generate_and_fix(generator, description, output_python_file, output_image_file, max_attempts=3):
+    """
+    Попытка сгенерировать и исправить код при необходимости
+    """
+    checker = Checker(generator)
+    attempt = 0
+    
+    while attempt < max_attempts:
+        if attempt == 0:
+            generator.generate_python_from_text(description, output_file=output_python_file)
+        
+        result = subprocess.run(
+            ["python", output_python_file],
+            capture_output=True,
+            text=True,
+        )
+        
+        if result.returncode == 0:
+            return True, None  # Успех
+        
+        # Если есть ошибка, пытаемся исправить
+        error_message = result.stderr
+        st.warning(f"В коде ошибка — исправляем (попытка {attempt + 1} из {max_attempts})")
+        checker.check_and_fix(output_python_file, error_message)
+        attempt += 1
+        
+        if attempt == max_attempts:
+            return False, error_message  # Превышено количество попыток
+    
+    return False, "Превышено максимальное количество попыток исправления"
+
 atexit.register(cleanup_files)
 
 st.title("Генератор диаграмм")
@@ -107,23 +139,17 @@ if st.button("Сгенерировать диаграмму"):
         temporary_files.append(output_python_file)
         temporary_files.append(output_image_file)
 
-        generator.generate_python_from_text(description, output_file=output_python_file)
-        st.success(f"Python-код успешно сгенерирован: {output_python_file}")
-
-        result = subprocess.run(
-            ["python", output_python_file],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0 and os.path.exists(output_image_file):
-            img = Image.open(output_image_file)
-            img_width, img_height = img.size
-            aspect_ratio = img_width / img_height
-            new_width = 512
-            new_height = int(new_width / aspect_ratio)
-            st.image(output_image_file, caption=f"Сгенерированная диаграмма ({generator_type})", width=new_width)
-        else:
-            st.error(f"Ошибка при выполнении Python-кода: {result.stderr}")
+        with st.spinner("Генерация и обработка кода..."):
+            success, error = try_generate_and_fix(generator, description, output_python_file, output_image_file)
+            
+            if success and os.path.exists(output_image_file):
+                img = Image.open(output_image_file)
+                img_width, img_height = img.size
+                aspect_ratio = img_width / img_height
+                new_width = 512
+                new_height = int(new_width / aspect_ratio)
+                st.image(output_image_file, caption=f"Сгенерированная диаграмма ({generator_type})", width=new_width)
+            else:
+                st.error(f"Не удалось сгенерировать диаграмму после нескольких попыток. Последняя ошибка: {error}")
     else:
         st.error("Пожалуйста, выберите генератор и введите описание.")

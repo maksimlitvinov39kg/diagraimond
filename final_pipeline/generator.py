@@ -29,7 +29,7 @@ class Generator:
             output_file=output_file,
             mode="yaml",
             file_format="yaml",
-            max_tokens=1500,
+            max_tokens=3000,
         )
 
     def generate_python_from_text(self, text, output_file="graph_code.py",output_image_file = "graph_output.png"):
