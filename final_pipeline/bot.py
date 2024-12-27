@@ -10,6 +10,7 @@ from barchart.generator import BarChartGenerator
 from linegraph.generator import LineGraphGenerator
 import matplotlib.pyplot as plt
 from PIL import Image
+from checker import Checker
 import time
 
 bot = telebot.TeleBot()
@@ -50,6 +51,37 @@ def handle_diagram_type(message):
     else:
         bot.send_message(message.chat.id, "Пожалуйста, выберите тип диаграммы из предложенных кнопок.")
 
+def try_generate_and_fix(generator, description, output_python_file, output_image_file, max_attempts=3):
+    """
+    Попытка сгенерировать и исправить код при необходимости
+    """
+    checker = Checker(generator)
+    attempt = 0
+    
+    while attempt < max_attempts:
+        if attempt == 0:
+            generator.generate_python_from_text(description, output_file=output_python_file)
+        
+        result = subprocess.run(
+            ["python", output_python_file],
+            capture_output=True,
+            text=True,
+        )
+        
+        if result.returncode == 0:
+            return True, None  # Успех
+        
+        # Если есть ошибка, пытаемся исправить
+        error_message = result.stderr
+        checker.check_and_fix(output_python_file, error_message)
+        attempt += 1
+        
+        if attempt == max_attempts:
+            return False, error_message  # Превышено количество попыток
+    
+    return False, "Превышено максимальное количество попыток исправления"
+
+
 @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'waiting_for_description')
 def handle_description(message):
     description = message.text
@@ -61,15 +93,10 @@ def handle_description(message):
         generator = load_generator(diagram_type)
         output_python_file = f'{"diagram_" + str(message.from_user.id) + str(generation)}.py'
         output_image_file = f'{"diagram_" + str(message.from_user.id) + str(generation)}.png'
-        generator.generate_python_from_text(description, output_file=output_python_file, output_image_file=output_image_file)
-
-        result = subprocess.run(
-            ["python", output_python_file],
-            capture_output=True,
-            text=True,
-        )
+        generation += 1
+        success, error = try_generate_and_fix(generator, description, output_python_file, output_image_file)
         os.rename('output.png', output_image_file)
-        if result.returncode == 0 and os.path.exists(output_python_file):
+        if success and os.path.exists(output_python_file):
             img = Image.open(output_image_file)
             img_width, img_height = img.size
             aspect_ratio = img_width / img_height
