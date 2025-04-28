@@ -11,8 +11,7 @@ conda create --name diagraimond
 3) Установите нужные зависимости
 
 ``` 
-pip install openai streamlit -U langgraph langchain-community langchain-openai networkx matplotlib pyyaml python-dotenv
-pip install httpx==0.27.2
+pip install -r requirements.txt
 ```
 4) перейдите в нужную папку
 ```

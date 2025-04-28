@@ -1,0 +1,10 @@
+openai
+streamlit 
+langgraph
+langchain-community
+langchain-openai
+networkx
+matplotlib
+pyyaml
+python-dotenv
+httpx==0.27.2

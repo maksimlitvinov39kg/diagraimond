@@ -233,7 +233,151 @@ def check_is_subscriber(telegram_id):
         """)
         
         result = conn.execute(query, {"telegram_id": telegram_id}).scalar()
-        return (result == 3 or result == 2)   
+        return (result == 3 or result == 2)
+
+@bot.message_handler(commands=["get_diagram_components"])
+def get_diagram_components(message):
+    """Получить компоненты конкретной диаграммы"""
+    if not check_is_subscriber(message.from_user.id):
+        bot.send_message(message.chat.id, "У вас нет подписки. Используйте /subscribe для оформления.")
+        return
     
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.send_message(message.chat.id, "Использование: /get_diagram_components <ID_диаграммы>")
+        return
+    
+    diagram_id = parts[1]
+    
+    with engine.connect() as connection:
+        components = connection.execute(text("""
+            SELECT dc.id, dc.component_type, dcm.metadata
+            FROM diagram_components dc
+            LEFT JOIN diagram_components_metadata dcm ON dc.id = dcm.component_id
+            WHERE dc.diagram_id = :diagram_id
+        """), {"diagram_id": diagram_id}).fetchall()
+        
+        if not components:
+            bot.send_message(message.chat.id, "Компоненты не найдены.")
+            return
+        
+        response = "Компоненты диаграммы:\n"
+        for comp in components:
+            response += f"ID: {comp.id}, Тип: {comp.component_type}\n"
+            if comp.metadata:
+                response += f"Метаданные: {comp.metadata}\n"
+        
+        bot.send_message(message.chat.id, response)   
+    
+@bot.message_handler(commands=["add_label"])
+def add_label_to_diagram(message):
+    """Добавить метку к диаграмме"""
+    if not check_is_subscriber(message.from_user.id):
+        bot.send_message(message.chat.id, "У вас нет подписки. Используйте /subscribe для оформления.")
+        return
+    
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        bot.send_message(message.chat.id, "Использование: /add_label <ID_диаграммы> <метка>")
+        return
+    
+    diagram_id, label_name = parts[1], parts[2]
+    
+    with engine.connect() as connection:
+        # Проверяем существование метки
+        label_id = connection.execute(
+            text("SELECT id FROM labels WHERE name = :name"),
+            {"name": label_name}
+        ).scalar()
+        
+        # Если метки нет - создаем
+        if not label_id:
+            label_id = connection.execute(
+                text("INSERT INTO labels (name) VALUES (:name) RETURNING id"),
+                {"name": label_name}
+            ).scalar()
+        
+        # Связываем метку с диаграммой
+        connection.execute(
+            text("""
+                INSERT INTO diagram_labels (diagram_id, label_id)
+                VALUES (:diagram_id, :label_id)
+            """),
+            {"diagram_id": diagram_id, "label_id": label_id}
+        )
+        connection.commit()
+    
+    bot.send_message(message.chat.id, f"Метка '{label_name}' добавлена к диаграмме {diagram_id}")
+
+@bot.message_handler(commands=["export_history"])
+def get_export_history(message):
+    """История экспорта диаграмм пользователя"""
+    with engine.connect() as connection:
+        exports = connection.execute(text("""
+            SELECT de.diagram_id, ef.name as format, de.created_at
+            FROM diagram_exports de
+            JOIN export_formats ef ON de.format_id = ef.id
+            JOIN diagram_requests dr ON de.diagram_id = dr.id
+            JOIN users u ON dr.user_id = u.id
+            WHERE u.telegram_id = :telegram_id
+            ORDER BY de.created_at DESC
+            LIMIT 5
+        """), {"telegram_id": message.from_user.id}).fetchall()
+        
+        if not exports:
+            bot.send_message(message.chat.id, "У вас нет истории экспорта.")
+            return
+        
+        response = "Последние экспорты:\n"
+        for exp in exports:
+            response += f"Диаграмма {exp.diagram_id} в {exp.format} ({exp.created_at})\n"
+        
+        bot.send_message(message.chat.id, response)
+
+@bot.message_handler(commands=["feedback"])
+def leave_feedback(message):
+    """Оставить отзыв о диаграмме"""
+    if not message.reply_to_message or not message.reply_to_message.photo:
+        bot.send_message(message.chat.id, "Ответьте этой командой на сообщение с диаграммой, чтобы оставить отзыв.")
+        return
+    
+    feedback_text = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
+    if not feedback_text:
+        bot.send_message(message.chat.id, "Использование: /feedback <текст отзыва> (в ответ на диаграмму)")
+        return
+    
+    with engine.connect() as connection:
+        # Получаем ID последней диаграммы пользователя
+        diagram_id = connection.execute(text("""
+            SELECT dr.id 
+            FROM diagram_requests dr
+            JOIN users u ON dr.user_id = u.id
+            WHERE u.telegram_id = :telegram_id
+            ORDER BY dr.created_at DESC
+            LIMIT 1
+        """), {"telegram_id": message.from_user.id}).scalar()
+        
+        if not diagram_id:
+            bot.send_message(message.chat.id, "Не найдено последней диаграммы.")
+            return
+        
+        # Сохраняем отзыв
+        connection.execute(text("""
+            INSERT INTO feedback (user_id, diagram_id, feedback_text, created_at)
+            VALUES (
+                (SELECT id FROM users WHERE telegram_id = :telegram_id),
+                :diagram_id,
+                :feedback_text,
+                NOW()
+            )
+        """), {
+            "telegram_id": message.from_user.id,
+            "diagram_id": diagram_id,
+            "feedback_text": feedback_text
+        })
+        connection.commit()
+    
+    bot.send_message(message.chat.id, "Спасибо за ваш отзыв!")
+
 if __name__ == '__main__':
     bot.infinity_polling()
