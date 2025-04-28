@@ -9,6 +9,7 @@ import subprocess
 import networkx as nx
 import yaml
 import os
+import math
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -129,7 +130,10 @@ def get_diagram_types():
 
 @bot.message_handler(commands=["available_formats"])
 def show_available_export_formats(message):
-    buttons = []
+    if (not check_is_subscriber(message.from_user.id)):
+        bot.send_message(message.chat.id, "У вас нет подписки. Используйте /subscribe для оформления ее")
+        return
+    result = ""
     with engine.connect() as connection:
         result = connection.execute(text("""
             SELECT name
@@ -138,21 +142,20 @@ def show_available_export_formats(message):
         """))
         rows = result.fetchall()
         
-        for row in rows:
-            format_name = row[0]
-            buttons.append(format_name)
+        result = '\n'.join(str(row) for row in rows)
 
-    if not buttons:
+    if not result:
         bot.send_message(message.chat.id, "Нет доступных форматов экспорта.")
         return
 
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add(*buttons)
-    bot.send_message(message.chat.id, "Доступные форматы экспорта:", reply_markup=markup)
+    bot.send_message(message.chat.id, f"Доступные форматы экспорта:\n{result}")
 
 
 @bot.message_handler(commands=["my_activity"])
 def show_user_last_activity(message):
+    if (not check_is_subscriber(message.from_user.id)):
+        bot.send_message(message.chat.id, "У вас нет подписки. Используйте /subscribe для оформления ее")
+        return
     buttons = []
     with engine.connect() as connection:
         result = connection.execute(text("""
@@ -181,6 +184,9 @@ def show_user_last_activity(message):
 
 @bot.message_handler(commands=["my_templates"])
 def show_available_templates(message):
+    if (not check_is_subscriber(message.from_user.id)):
+        bot.send_message(message.chat.id, "У вас нет подписки. Используйте /subscribe для оформления ее")
+        return
     buttons = []
     with engine.connect() as connection:
         result = connection.execute(text("""
