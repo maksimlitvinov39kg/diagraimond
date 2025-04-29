@@ -41,43 +41,18 @@ class RedisCacheService:
         return f"diagram_cache:{hashlib.md5(key_data.encode()).hexdigest()}"
     
     def get_cached_image(self, diagram_type, description):
-        """
-        Получает кэшированное изображение диаграммы.
-        
-        Args:
-            diagram_type (str): Тип диаграммы
-            description (str): Описание диаграммы
-            
-        Returns:
-            bytes или None: Бинарные данные изображения или None, если кэш отсутствует
-        """
         key = self._generate_key(diagram_type, description)
+        print(key)
         
-        # Проверяем наличие данных в кэше
         cached_data = self.redis_client.get(key)
+        print(cached_data)
         if cached_data:
-            # Если есть метаданные, получаем их из отдельного ключа
-            metadata_key = f"{key}:metadata"
-            metadata_json = self.redis_client.get(metadata_key)
-            metadata = json.loads(metadata_json) if metadata_json else {}
-            
-            return cached_data, metadata
+            image_path = cached_data.decode('utf-8')
+            return image_path
         
-        return None, None
+        return None
     
     def cache_image(self, diagram_type, description, image_data, metadata=None):
-        """
-        Кэширует изображение диаграммы.
-        
-        Args:
-            diagram_type (str): Тип диаграммы
-            description (str): Описание диаграммы
-            image_data (bytes): Бинарные данные изображения
-            metadata (dict, optional): Метаданные для хранения вместе с изображением
-            
-        Returns:
-            bool: True, если кэширование успешно
-        """
         key = self._generate_key(diagram_type, description)
         
         # Сохраняем изображение с указанным временем жизни
