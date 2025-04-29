@@ -13,7 +13,7 @@ class Generator:
             raise ValueError("API key not found in environment variables.")
         
         self.client = OpenAI(
-            base_url="https://api-inference.huggingface.co/v1/",
+            base_url="https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-Coder-32B-Instruct/v1",
             api_key=api_key,
         )
 
@@ -32,7 +32,7 @@ class Generator:
             max_tokens=3000,
         )
 
-    def generate_python_from_text(self, text, output_file="graph_code.py",output_image_file = "graph_output.png"):
+    def generate_python_from_text(self, text, output_file="graph_code.py",output_image_file = "output.png"):
         """
         Генерация Python-кода для графовой модели из текстового описания.
         """
