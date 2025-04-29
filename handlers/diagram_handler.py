@@ -4,7 +4,7 @@ from services.cache_service import RedisCacheService
 from telebot import types
 from database.user_repository import get_or_create_user, get_user_id_by_telegram_id
 from database.diagram_repository import get_diagram_types, add_diagram_request, add_diagram_image
-# from services.generate_diagram import generate_diagram
+from services.generate_diagram import Generator
 
 user_states = {}
 user_diagram_type = {}
@@ -53,21 +53,15 @@ def register_diagram_handlers(bot):
             bot.send_message(message.chat.id, "Нашли вашу картинку в кэше:" + cached_image)
             return
         
-        # success, error, output_python_file, output_image_file = generate_diagram(
-        #     diagram_type, 
-        #     description, 
-        #     message.from_user.id, 
-        #     generation_counter
-        # )
-        # generation_counter += 1
+        print(success, error, output_python_file, output_image_file)
         
-        
+
         user_id = get_user_id_by_telegram_id(message.from_user.id)
         request_id = add_diagram_request(user_id, description, diagram_type)
         output_image_file = "test_" + str(user_id) + "_" + str(request_id) + ".png"
         add_diagram_image(request_id, output_image_file)
         cache_service.cache_image(diagram_type, description, output_image_file)
-        bot.send_message(message.chat.id, "Сгенерировали ваши картинку" + output_image_file)
+        bot.send_message(message.chat.id, "Сгенерировали ваши картинку" + output_image_file
         
         del user_states[message.from_user.id]
         del user_diagram_type[message.from_user.id]
