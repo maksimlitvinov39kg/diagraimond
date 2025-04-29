@@ -210,6 +210,130 @@ def show_available_templates(message):
     user_states[message.from_user.id] = 'waiting_for_template_selection'
     bot.send_message(message.chat.id, "Выберите шаблон промпта для генерации:", reply_markup=markup)
 
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'waiting_for_feedback')
+def process_feedback(message):
+    user_id = message.from_user.id
+    feedback_text = message.text
+    
+    # Проверяем, содержит ли сообщение оценку (например, число от 1 до 5)
+    if any(char.isdigit() for char in feedback_text):
+        rating = int(next(char for char in feedback_text if char.isdigit()))
+        rating = max(1, min(5, rating))  # Ограничиваем оценку от 1 до 5
+    else:
+        rating = None
+    
+    with engine.connect() as connection:
+        query = text("""
+            INSERT INTO feedback (user_id, rating, comment, submitted_at)
+            VALUES (
+                (SELECT id FROM users WHERE telegram_id = :telegram_id),
+                :rating,
+                :comment,
+                NOW()
+            )
+        """)
+        connection.execute(query, {
+            "telegram_id": user_id,
+            "rating": rating,
+            "comment": feedback_text
+        })
+        connection.commit()
+    
+    bot.send_message(message.chat.id, "Спасибо за ваш отзыв!")
+    user_states[message.from_user.id] = None
+
+@bot.message_handler(commands=["history"])
+def show_user_history(message):
+    with engine.connect() as connection:
+        query = text("""
+            SELECT dr.id, dr.prompt, dr.created_at, dm.diagram_type
+            FROM diagram_requests dr
+            LEFT JOIN diagram_metadata dm ON dr.id = dm.diagram_id
+            WHERE dr.user_id = (SELECT id FROM users WHERE telegram_id = :telegram_id)
+            ORDER BY dr.created_at DESC
+            LIMIT 10
+        """)
+        result = connection.execute(query, {"telegram_id": message.from_user.id})
+        rows = result.fetchall()
+        
+        if not rows:
+            bot.send_message(message.chat.id, "У вас пока нет истории запросов.")
+            return
+        
+        history_text = "Ваша история запросов:\n\n"
+        for row in rows:
+            history_text += f"📅 {row.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+            history_text += f"📊 Тип: {row.diagram_type or 'Не указан'}\n"
+            history_text += f"📝 Запрос: {row.prompt[:50]}...\n"
+            history_text += f"🔗 ID: {row.id}\n\n"
+        
+        bot.send_message(message.chat.id, history_text)
+
+@bot.message_handler(commands=["add_to_favorites"])
+def add_to_favorites(message):
+    # Предполагаем, что пользователь вводит ID диаграммы
+    user_states[message.from_user.id] = 'waiting_for_favorite_id'
+    bot.send_message(message.chat.id, "Введите ID диаграммы, которую хотите добавить в избранное:")
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'waiting_for_favorite_id')
+def process_favorite_id(message):
+    try:
+        diagram_id = int(message.text)
+        with engine.connect() as connection:
+            # Проверяем существование диаграммы
+            check_query = text("SELECT 1 FROM diagram_requests WHERE id = :diagram_id")
+            exists = connection.execute(check_query, {"diagram_id": diagram_id}).scalar()
+            
+            if not exists:
+                bot.send_message(message.chat.id, "Диаграмма с таким ID не найдена.")
+                return
+            
+            # Добавляем в избранное
+            insert_query = text("""
+                INSERT INTO user_favorites (user_id, diagram_id, saved_at)
+                VALUES (
+                    (SELECT id FROM users WHERE telegram_id = :telegram_id),
+                    :diagram_id,
+                    NOW()
+                )
+            """)
+            connection.execute(insert_query, {
+                "telegram_id": message.from_user.id,
+                "diagram_id": diagram_id
+            })
+            connection.commit()
+            
+            bot.send_message(message.chat.id, f"Диаграмма #{diagram_id} добавлена в избранное!")
+    
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный ID диаграммы (число).")
+    
+    user_states[message.from_user.id] = None
+
+@bot.message_handler(commands=["favorites"])
+def show_favorites(message):
+    with engine.connect() as connection:
+        query = text("""
+            SELECT uf.diagram_id, dr.prompt, uf.saved_at
+            FROM user_favorites uf
+            JOIN diagram_requests dr ON uf.diagram_id = dr.id
+            WHERE uf.user_id = (SELECT id FROM users WHERE telegram_id = :telegram_id)
+            ORDER BY uf.saved_at DESC
+        """)
+        result = connection.execute(query, {"telegram_id": message.from_user.id})
+        rows = result.fetchall()
+        
+        if not rows:
+            bot.send_message(message.chat.id, "У вас пока нет избранных диаграмм.")
+            return
+        
+        favorites_text = "Ваши избранные диаграммы:\n\n"
+        for row in rows:
+            favorites_text += f"⭐ ID: {row.diagram_id}\n"
+            favorites_text += f"📝 Запрос: {row.prompt[:50]}...\n"
+            favorites_text += f"📅 Добавлено: {row.saved_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+        
+        bot.send_message(message.chat.id, favorites_text)
 
 def check_is_admin(telegram_id):
     with engine.connect() as conn:
@@ -234,6 +358,20 @@ def check_is_subscriber(telegram_id):
         
         result = conn.execute(query, {"telegram_id": telegram_id}).scalar()
         return (result == 3 or result == 2)   
+    
+def save_diagram_image(request_id, image_path, format_type):
+    with engine.connect() as connection:
+        query = text("""
+            INSERT INTO diagram_images (request_id, image_path, format, created_at)
+            VALUES (:request_id, :image_path, :format, NOW())
+        """)
+        connection.execute(query, {
+            "request_id": request_id,
+            "image_path": image_path,
+            "format": format_type
+        })
+        connection.commit()
+
     
 if __name__ == '__main__':
     bot.infinity_polling()
