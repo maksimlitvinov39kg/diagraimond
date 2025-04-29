@@ -3,7 +3,7 @@ from io import BytesIO
 from services.cache_service import RedisCacheService
 from telebot import types
 from database.user_repository import get_or_create_user, get_user_id_by_telegram_id
-from database.diagram_repository import get_diagram_types, add_diagram_request, add_diagram_image
+from database.diagram_repository import get_diagram_types, add_diagram_request, add_diagram_image, add_favourite, get_favourites
 from services.generate_diagram import Generator
 
 user_states = {}
@@ -50,18 +50,60 @@ def register_diagram_handlers(bot):
         
         cached_image = cache_service.get_cached_image(diagram_type, description)
         if cached_image:
-            bot.send_message(message.chat.id, "Нашли вашу картинку в кэше:" + cached_image)
-            return
-        
-        print(success, error, output_python_file, output_image_file)
-        
+            with open(cached_image, 'rb') as photo:
+                bot.send_photo(message.from_user.id, photo)
+            return        
 
         user_id = get_user_id_by_telegram_id(message.from_user.id)
         request_id = add_diagram_request(user_id, description, diagram_type)
-        output_image_file = "test_" + str(user_id) + "_" + str(request_id) + ".png"
+        generator = Generator()
+        success, error, output_python_file, output_image_file = generator.generate_diagram(
+            diagram_type, 
+            description, 
+            message.from_user.id, 
+            generation_counter
+        )
         add_diagram_image(request_id, output_image_file)
         cache_service.cache_image(diagram_type, description, output_image_file)
-        bot.send_message(message.chat.id, "Сгенерировали ваши картинку" + output_image_file
+        
+        print(success, error, output_python_file, output_image_file)
+        with open(output_image_file, 'rb') as photo:
+                bot.send_photo(message.from_user.id, photo)
         
         del user_states[message.from_user.id]
         del user_diagram_type[message.from_user.id]
+
+    @bot.message_handler(commands=["add_to_favorites"])
+    def add_to_favorites(message):
+        user_states[message.from_user.id] = 'waiting_for_favorite_id'
+        bot.send_message(message.chat.id, "Введите ID диаграммы, которую хотите добавить в избранное:")
+
+    @bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == 'waiting_for_favorite_id')
+    def process_favorite_id(message):
+        try:
+            diagram_id = int(message.text)
+            exists = add_favourite(message.from_user.id, diagram_id)
+            if exists:
+                bot.send_message(message.chat.id, f"Диаграмма #{diagram_id} добавлена в избранное!")
+            else:
+                bot.send_message(message.chat.id, f"Диаграмма #{diagram_id} отсутствует в БД")
+
+        except ValueError:
+            bot.send_message(message.chat.id, "Пожалуйста, введите корректный ID диаграммы (число).")
+
+        user_states[message.from_user.id] = None
+
+    @bot.message_handler(commands=["favorites"])
+    def show_favorites(message):
+            rows = get_favourites(telegram_id=message.from_user.id)
+            if not rows:
+                bot.send_message(message.chat.id, "У вас пока нет избранных диаграмм.")
+                return
+
+            favorites_text = "Ваши избранные диаграммы:\n\n"
+            for row in rows:
+                favorites_text += f"⭐ ID: {row.diagram_id}\n"
+                favorites_text += f"📝 Запрос: {row.prompt[:50]}...\n"
+                favorites_text += f"📅 Добавлено: {row.saved_at.strftime('%Y-%m-%d %H:%M')}\n\n"
+
+            bot.send_message(message.chat.id, favorites_text)

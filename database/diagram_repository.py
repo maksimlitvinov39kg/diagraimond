@@ -106,3 +106,39 @@ def get_all_tables():
     """Get the names of all tables in the database."""
     inspector = inspect(engine)
     return inspector.get_table_names()
+
+def add_favourite(telegram_id, diagram_id):
+    with engine.connect() as connection:
+        check_query = text("SELECT 1 FROM diagram_requests WHERE id = :diagram_id")
+        exists = connection.execute(check_query, {"diagram_id": diagram_id}).scalar()
+        print(exists)
+        if not exists:
+            return exists, None
+
+        insert_query = text("""
+            INSERT INTO user_favorites (user_id, diagram_id, saved_at)
+            VALUES (
+                (SELECT id FROM users WHERE telegram_id = :telegram_id),
+                    :diagram_id,
+                    NOW()
+                )
+        """)
+        connection.execute(insert_query, {
+            "telegram_id": telegram_id,
+            "diagram_id": diagram_id
+        })
+        connection.commit()
+        return exists
+
+def get_favourites(telegram_id):
+    with engine.connect() as connection:
+            query = text("""
+                SELECT uf.diagram_id, dr.prompt, uf.saved_at
+                FROM user_favorites uf
+                JOIN diagram_requests dr ON uf.diagram_id = dr.id
+                WHERE uf.user_id = (SELECT id FROM users WHERE telegram_id = :telegram_id)
+                ORDER BY uf.saved_at DESC
+            """)
+            result = connection.execute(query, {"telegram_id": telegram_id})
+            rows = result.fetchall()
+            return rows

@@ -25,7 +25,7 @@ class Generator:
             raise ValueError("API key not found in environment variables.")
 
         self.client = OpenAI(
-            base_url="https://router.huggingface.co/hyperbolic/v1",
+            base_url="https://router.huggingface.co/hf-inference/models/Qwen/Qwen2.5-Coder-32B-Instruct/v1",
             api_key=api_key
         )
 
